@@ -4,9 +4,24 @@ module Top (main) where
 import Control.Monad (ap,liftM)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import System.Environment (getArgs)
 
 main :: IO ()
 main = do
+  args <- getArgs
+  let config = parseConfig args
+  run config
+
+data Config = Config { arg :: Int }
+
+parseConfig :: [String] -> Config
+parseConfig = \case
+  [n] -> Config $ read n
+  [] -> Config 0
+  args -> error (show ("config",args))
+
+run :: Config -> IO ()
+run Config{arg} = do
   putStrLn "*lazy*"
   let x = EVar "x"
   let f = EVar "f"
@@ -27,13 +42,35 @@ main = do
   let _sam = EApp (EApp thrice inc) (ENum 100)
   let _sam = EApp (EApp thrice (EApp thrice inc)) (ENum 100)
   let _sam = EApp (EApp (EApp thrice thrice) inc) (ENum 100)
-  let sam = EApp double (EApp double (ENum 7))
+  let _sam = EApp double (EApp double (ENum 7))
+
+  -- Scott numerals
+  let zero = ELam "z" $ ELam "s" $ EVar "z"
+  let succ = ELam "n" $ ELam "z" $ ELam "s" $ EApp (EVar "s") (EVar "n")
+  let
+    makeScott :: Int -> Exp
+    makeScott = \case
+      0 -> zero
+      n -> EApp succ (makeScott (n-1))
+
+  -- convert Scott numeral to builtin number, using fixpoint
+  let conv = EFix $ ELam "conv" $ ELam "n" $ EApp (EApp (EVar "n") z) s
+        where z = ENum 0
+              s = ELam "x" $ EAdd (ENum 1) (EApp (EVar "conv") (EVar "x"))
+
+  let sam = EApp conv (makeScott arg)
 
   (res,prof) <- evalByGraphReduction sam
   print (res,prof)
   pure ()
 
-data Exp = ENum Int | EAdd Exp Exp | EApp Exp Exp | ELam Id Exp | EVar Id
+data Exp
+  = ENum Int
+  | EAdd Exp Exp
+  | EApp Exp Exp
+  | ELam Id Exp
+  | EVar Id
+  | EFix Exp
 
 instance Show Exp where show = pretty
 
@@ -44,6 +81,7 @@ pretty = \case
   EApp l r -> "(" ++ show l ++ " " ++ show r ++ ")"
   ELam x body -> "\\" ++ x ++ "." ++ show body
   EVar x -> x
+  EFix body -> "(fix:" ++ show body ++ ")"
 
 type Id = String
 
@@ -77,6 +115,9 @@ loadExp = load
         Alloc (NLam x body)
       EVar x -> do
         Alloc (NVar x)
+      EFix body -> do
+        body <- load body
+        Alloc (NFix body)
 
 
 unloadExp :: Nid -> G Exp
@@ -100,6 +141,9 @@ unloadExp = unload
           pure (ELam x body)
         NVar x -> do
           pure (EVar x)
+        NFix body -> do
+          body <- unload body
+          pure (EFix body)
         NIndirect target -> do
           target <- unload target
           pure (EApp (EVar "I") target)
@@ -110,9 +154,9 @@ evalToWHNF nid0 = do
   eval nid0 []
   where
     eval :: Nid -> [(Nid,Nid)] -> G Value
-    eval nid spine = do
-      do e <- unloadExp nid; Note ("eval: " ++ show e)
-      Fetch nid >>= \case
+    eval me spine = do
+      do e <- unloadExp me; Note ("eval: " ++ show e)
+      Fetch me >>= \case
         NNum n -> do
           pure (VNum n)
         NAdd left right -> do
@@ -121,10 +165,10 @@ evalToWHNF nid0 = do
           TickAdd
           let res@(VNum n) = vadd left right
           --Debug ("add",left,right,"-->",res)
-          Update nid (NNum n)
+          Update me (NNum n)
           pure res
         NApp func arg -> do
-          eval func ((nid,arg) : spine)
+          eval func ((me,arg) : spine)
         NLam binder body -> do
           case spine of
             [] -> error "evalToWHNF, functional result"
@@ -137,6 +181,11 @@ evalToWHNF nid0 = do
               eval redux spine
         NVar x -> do
           error (show ("evalToWHNF/var",x))
+        NFix func -> do
+          -- EFix e ==> EApp e (EFix e)
+          -- implement fixpoint by unrolling one step.
+          unrolled <- Alloc (NApp func me)
+          eval unrolled spine
         NIndirect target -> do
           eval target spine
 
@@ -163,6 +212,9 @@ copySub (binder,bound) = copy
             Alloc (NLam x body)
         NVar x -> do
           pure $ if x == binder then bound else nid
+        NFix body -> do
+          body <- copy body
+          Alloc (NFix body)
         NIndirect{} -> do
           undefined -- TODO: provoke this with an example
 
@@ -188,6 +240,7 @@ data Node
   | NLam Id Nid
   | NVar Id
   | NIndirect Nid
+  | NFix Nid
   deriving Show
 
 data Nid = Nid Int
