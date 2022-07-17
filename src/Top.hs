@@ -10,6 +10,7 @@ main :: IO ()
 main = do
   args <- getArgs
   let config = parseConfig args
+  let _ = unloadExp
   run config
 
 data Config = Config { arg :: Int }
@@ -60,8 +61,8 @@ run Config{arg} = do
 
   let sam = EApp conv (makeScott arg)
 
-  (res,prof) <- evalByGraphReduction sam
-  print (res,prof)
+  (res,prof,u) <- evalByGraphReduction sam
+  print (res,prof,u)
   pure ()
 
 data Exp
@@ -90,7 +91,7 @@ data Value = VNum Int deriving Show
 vadd :: Value -> Value -> Value
 vadd v1 v2 = case (v1,v2) of (VNum n1, VNum n2) -> VNum (n1+n2)
 
-evalByGraphReduction :: Exp -> IO (Value, Prof)
+evalByGraphReduction :: Exp -> IO (Value, Prof,Int)
 evalByGraphReduction exp = execG $ do
   nid <- loadExp exp
   evalToWHNF nid
@@ -117,7 +118,10 @@ loadExp = load
         Alloc (NVar x)
       EFix body -> do
         body <- load body
-        Alloc (NFix body)
+        --Alloc (NFix body)
+        res <- Alloc NBlackHole
+        Update res (NApp body res)
+        pure res
 
 
 unloadExp :: Nid -> G Exp
@@ -141,21 +145,23 @@ unloadExp = unload
           pure (ELam x body)
         NVar x -> do
           pure (EVar x)
-        NFix body -> do
+        {-NFix body -> do
           body <- unload body
-          pure (EFix body)
+          pure (EFix body)-}
         NIndirect target -> do
           target <- unload target
           pure (EApp (EVar "I") target)
+        NBlackHole{} -> do
+          undefined
 
 evalToWHNF :: Nid -> G Value
 evalToWHNF nid0 = do
-  do e0 <- unloadExp nid0; Note ("evalToWHNF: " ++ show e0)
+  --do e0 <- unloadExp nid0; Note ("evalToWHNF: " ++ show e0)
   eval nid0 []
   where
     eval :: Nid -> [(Nid,Nid)] -> G Value
     eval me spine = do
-      do e <- unloadExp me; Note ("eval: " ++ show e)
+      --do e <- unloadExp me; Note ("eval: " ++ show e)
       Fetch me >>= \case
         NNum n -> do
           pure (VNum n)
@@ -177,17 +183,19 @@ evalToWHNF nid0 = do
               body' <- copySub (binder,arg) body
               Update redux (NIndirect body')
               TickBeta
-              do e <- unloadExp redux; Note ("BETA: " ++ show e)
+              --do e <- unloadExp redux; Note ("BETA: " ++ show e)
               eval redux spine
         NVar x -> do
           error (show ("evalToWHNF/var",x))
-        NFix func -> do
+        {-NFix func -> do
           -- EFix e ==> EApp e (EFix e)
           -- implement fixpoint by unrolling one step.
           unrolled <- Alloc (NApp func me)
-          eval unrolled spine
+          eval unrolled spine-}
         NIndirect target -> do
           eval target spine
+        NBlackHole{} -> do
+          undefined
 
 
 copySub :: (Id,Nid) -> Nid -> G Nid
@@ -212,11 +220,15 @@ copySub (binder,bound) = copy
             Alloc (NLam x body)
         NVar x -> do
           pure $ if x == binder then bound else nid
-        NFix body -> do
+        {-NFix body -> do
           body <- copy body
-          Alloc (NFix body)
-        NIndirect{} -> do
-          undefined -- TODO: provoke this with an example
+          Alloc (NFix body)-}
+        NIndirect body -> do
+          --undefined -- TODO: provoke this with an example
+          body <- copy body
+          Alloc (NIndirect body)
+        NBlackHole{} -> do
+          undefined
 
 instance Functor G where fmap = liftM
 instance Applicative G where pure = return; (<*>) = ap
@@ -240,14 +252,15 @@ data Node
   | NLam Id Nid
   | NVar Id
   | NIndirect Nid
-  | NFix Nid
+  -- | NFix Nid
+  | NBlackHole
   deriving Show
 
 data Nid = Nid Int
   deriving (Eq,Ord,Show)
 
-execG :: G a -> IO (a,Prof)
-execG g = loop state0 g $ \s a -> pure (a, prof s)
+execG :: G a -> IO (a,Prof,Int)
+execG g = loop state0 g $ \s a -> pure (a, prof s, u s)
   where
     state0 = State { heap = Map.empty, u = 1, prof = prof0 }
     loop :: forall a b. State -> G a -> (State -> a -> IO b) -> IO b
