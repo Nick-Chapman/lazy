@@ -6,6 +6,7 @@ import System.Environment (getArgs)
 import qualified Example as X
 
 import qualified GraphEval as G
+import qualified DirectEval as D
 
 main :: IO ()
 main = do
@@ -24,11 +25,17 @@ parseConfig = \case
 
 run :: Config -> IO ()
 run Config{arg} = do
-  runG "thrice-thrice" $ X.thriceExample
-  runG "scott" $ EApp X.convScott (X.makeScott arg)
+  let _ = arg
+  runX "sam" $ X.sam
+  --runX "thrice-thrice" $ X.thriceExample
+  --runX "scott" $ EApp X.convScott (X.makeScott arg)
 
-runG :: String -> Exp -> IO ()
-runG tag exp = do
-  (res,prof,u) <- G.evalByGraphReduction exp
-  print (tag,res,prof,u)
+runX :: String -> Exp -> IO ()
+runX tag exp = do
+  let _ = do
+        (res,prof,u) <- G.evalByGraphReduction exp
+        print ("G",tag,res,prof,u)
+  do
+    (res,prof,u) <- D.evalDirect exp
+    print ("D",tag,res,prof,u)
   pure ()

@@ -1,12 +1,14 @@
 
 module Example
-  ( thriceExample
+  ( sam
+  , thriceExample
   , makeScott, convScott
   ) where
 
 import Lang
 
-{-
+sam :: Exp
+sam = do
   let x = EVar "x"
   let f = EVar "f"
   let n = EVar "n"
@@ -26,8 +28,8 @@ import Lang
   let _sam = EApp (EApp thrice inc) (ENum 100)
   let _sam = EApp (EApp thrice (EApp thrice inc)) (ENum 100)
   let _sam = EApp (EApp (EApp thrice thrice) inc) (ENum 100)
-  let _sam = EApp double (EApp double (ENum 7))
--}
+  let sam = EApp double (EApp double (ENum 7))
+  sam
 
 thriceExample :: Exp
 thriceExample = do
