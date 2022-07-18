@@ -37,5 +37,5 @@ runX tag exp = do
         print ("G",tag,res,prof,u)
   do
     (res,prof,u) <- D.evalDirect exp
-    print ("D",tag,res,prof,u)
+    print ("D",tag,"result=",res,"prof=",prof,"allocs=",u)
   pure ()

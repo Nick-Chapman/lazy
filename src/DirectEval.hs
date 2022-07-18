@@ -25,16 +25,13 @@ env0 = Map.empty
 data Thunk = Thunk Exp Env | AlreadyValue Value
   deriving Show
 
-makeThunk :: Exp -> Env -> Thunk
-makeThunk = Thunk
-
 evalDirect :: Exp -> IO (Value, Prof,Int)
 evalDirect exp = execH $ do
   eval env0 exp
 
 eval :: Env -> Exp -> H Value
 eval q exp = do
- Note ("eval: " ++ show exp)
+ Note ("eval: " ++ show exp ++ ", env=" ++ show q)
  case exp of
   ENum n -> do
     pure $ VNum n
@@ -46,9 +43,9 @@ eval q exp = do
     Note (show ("add",v1,v2,"-->",res))
     pure res
   EApp func arg -> do
+    arg <- makeThunk q arg
     func <- eval q func
-    let thunk = makeThunk arg q
-    apply func thunk
+    apply func arg
   ELam x body -> do
     pure $ VFunc x body q
   EVar x -> do
@@ -58,6 +55,16 @@ eval q exp = do
   EFix body -> do
     undefined body
 
+makeThunk :: Env -> Exp -> H Loc
+makeThunk env = \case
+  EVar x -> do
+    case Map.lookup x env of
+      Nothing -> error (show ("makeThunk/EVar",x))
+      Just loc -> pure loc
+  exp -> do
+    Alloc (Thunk exp env)
+
+
 force :: Loc -> H Value
 force loc = Fetch loc >>= \case
   AlreadyValue value -> pure value
@@ -66,15 +73,14 @@ force loc = Fetch loc >>= \case
     Update loc (AlreadyValue value)
     pure value
 
-apply :: Value -> Thunk -> H Value
+apply :: Value -> Loc -> H Value
 apply func arg = do
  Note ("apply: " ++ show func ++ " @ " ++ show arg)
  case func of
   VNum{} -> error "apply/num"
   VFunc x body env -> do
     TickBeta
-    loc <- Alloc arg
-    let env' = Map.insert x loc env
+    let env' = Map.insert x arg env
     eval env' body
 
 
@@ -98,7 +104,7 @@ data Loc = Loc Int
 execH :: H a -> IO (a,Prof,Int)
 execH g = loop state0 g $ \s a -> pure (a, prof s, u s)
   where
-    state0 = State { heap = Map.empty, u = 1, prof = prof0 }
+    state0 = State { heap = Map.empty, u = 0, prof = prof0 }
     loop :: forall a b. State -> H a -> (State -> a -> IO b) -> IO b
     loop s g k = case g of
       Ret x -> k s x
@@ -111,9 +117,10 @@ execH g = loop state0 g $ \s a -> pure (a, prof s, u s)
       TickAdd -> do
         k s { prof = (prof s) { add = add (prof s) + 1 }} ()
       Alloc thunk -> do
-        let loc = Loc (u s)
+        let u' = u s + 1
+        let loc = Loc u'
         print ("Alloc",thunk,"-->",loc)
-        k s { heap = Map.insert loc thunk (heap s), u = u s + 1 } loc
+        k s { heap = Map.insert loc thunk (heap s), u = u' } loc
       Fetch loc -> do
         let thunk = maybe (error (show ("Fetch",loc))) id $ Map.lookup loc (heap s)
         print ("Fetch",loc,"-->",thunk)

@@ -28,7 +28,12 @@ sam = do
   let _sam = EApp (EApp thrice inc) (ENum 100)
   let _sam = EApp (EApp thrice (EApp thrice inc)) (ENum 100)
   let _sam = EApp (EApp (EApp thrice thrice) inc) (ENum 100)
-  let sam = EApp double (EApp double (ENum 7))
+  let _sam = EApp double (EApp double (ENum 7))
+  let k42 = ELam "ignored" $ ENum 42
+  let _sam = EApp k42 (EApp double (ENum 7))
+
+  let sam = EApp (ELam "x" $ EApp double (EVar "x")) (EAdd (ENum 1) (ENum 2))
+  
   sam
 
 thriceExample :: Exp
