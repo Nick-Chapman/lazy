@@ -28,7 +28,8 @@ run Config{arg} = do
   let _ = arg
   --runX "sam" $ X.sam
   --runX "thrice-thrice" $ X.thriceExample
-  runX "scott" $ EApp X.convScott (X.makeScott arg)
+  --runX "scott" $ EApp X.convScott (X.makeScott arg)
+  runX "listExample" $ X.listExample arg
 
 runX :: String -> Exp -> IO ()
 runX tag exp = do

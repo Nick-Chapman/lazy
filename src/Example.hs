@@ -3,6 +3,7 @@ module Example
   ( sam
   , thriceExample
   , makeScott, convScott
+  , listExample
   ) where
 
 import Lang
@@ -33,7 +34,7 @@ sam = do
   let _sam = EApp k42 (EApp double (ENum 7))
 
   let sam = EApp (ELam "x" $ EApp double (EVar "x")) (EAdd (ENum 1) (ENum 2))
-  
+
   sam
 
 thriceExample :: Exp
@@ -61,3 +62,20 @@ convScott = do
   EFix $ ELam "conv" $ ELam "n" $ EApp (EApp (EVar "n") z) s
     where z = ENum 0
           s = ELam "x" $ EAdd (ENum 1) (EApp (EVar "conv") (EVar "x"))
+
+
+
+listExample :: Int -> Exp
+listExample _n = do
+  EApp sum (consF (ENum 10) (consF (ENum 20) nil))
+    where
+      consF x xs = EApp (EApp cons x) xs
+
+      sum = EFix $ ELam "sum" $ ELam "sumArg" $ EApp (EApp (EVar "sumArg") n) c
+        where
+          n = ENum 0
+          c = ELam "x" $ ELam "xs" $ EAdd (EVar "x") (EApp (EVar "sum") (EVar "xs"))
+
+      nil = ELam "n" $ ELam "c" $ EVar "n"
+      cons = ELam "x" $ ELam "xs" $ ELam "n" $ ELam "c" $
+                EApp (EApp (EVar "c") (EVar "x")) (EVar "xs")
