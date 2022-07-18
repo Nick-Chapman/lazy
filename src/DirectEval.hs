@@ -33,7 +33,9 @@ evalDirect exp = execH $ do
   eval env0 exp
 
 eval :: Env -> Exp -> H Value
-eval q = \case
+eval q exp = do
+ Note ("eval: " ++ show exp)
+ case exp of
   ENum n -> do
     pure $ VNum n
   EAdd left right -> do
@@ -52,23 +54,22 @@ eval q = \case
   EVar x -> do
     case Map.lookup x q of
       Nothing -> error (show ("eval/EVar",x))
-      Just loc -> do
-        thunk <- Fetch loc
-        value <- force thunk
-        Update loc (AlreadyValue value)
-        pure value
+      Just loc -> force loc
   EFix body -> do
     undefined body
 
-force :: Thunk -> H Value
-force = \case
+force :: Loc -> H Value
+force loc = Fetch loc >>= \case
   AlreadyValue value -> pure value
   Thunk exp env -> do
-    -- TODO update should be here?
-    eval env exp
+    value <- eval env exp
+    Update loc (AlreadyValue value)
+    pure value
 
 apply :: Value -> Thunk -> H Value
-apply func arg = case func of
+apply func arg = do
+ Note ("apply: " ++ show func ++ " @ " ++ show arg)
+ case func of
   VNum{} -> error "apply/num"
   VFunc x body env -> do
     TickBeta
