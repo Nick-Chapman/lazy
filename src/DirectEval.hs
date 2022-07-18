@@ -31,7 +31,7 @@ evalDirect exp = execH $ do
 
 eval :: Env -> Exp -> H Value
 eval q exp = do
- Note ("eval: " ++ show exp ++ ", env=" ++ show q)
+ --Note ("eval: " ++ show exp ++ ", env=" ++ show q)
  case exp of
   ENum n -> do
     pure $ VNum n
@@ -40,7 +40,7 @@ eval q exp = do
     v2 <- eval q right
     let res = vadd v1 v2
     TickAdd
-    Note (show ("add",v1,v2,"-->",res))
+    --Note (show ("add",v1,v2,"-->",res))
     pure res
   EApp func arg -> do
     arg <- makeThunk q arg
@@ -52,8 +52,10 @@ eval q exp = do
     case Map.lookup x q of
       Nothing -> error (show ("eval/EVar",x))
       Just loc -> force loc
-  EFix body -> do
-    undefined body
+  me@(EFix body) -> do
+    me <- makeThunk q me
+    body <- eval q body
+    apply body me
 
 makeThunk :: Env -> Exp -> H Loc
 makeThunk env = \case
@@ -75,7 +77,7 @@ force loc = Fetch loc >>= \case
 
 apply :: Value -> Loc -> H Value
 apply func arg = do
- Note ("apply: " ++ show func ++ " @ " ++ show arg)
+ --Note ("apply: " ++ show func ++ " @ " ++ show arg)
  case func of
   VNum{} -> error "apply/num"
   VFunc x body env -> do
@@ -119,14 +121,14 @@ execH g = loop state0 g $ \s a -> pure (a, prof s, u s)
       Alloc thunk -> do
         let u' = u s + 1
         let loc = Loc u'
-        print ("Alloc",thunk,"-->",loc)
+        --print ("Alloc",thunk,"-->",loc)
         k s { heap = Map.insert loc thunk (heap s), u = u' } loc
       Fetch loc -> do
         let thunk = maybe (error (show ("Fetch",loc))) id $ Map.lookup loc (heap s)
-        print ("Fetch",loc,"-->",thunk)
+        --print ("Fetch",loc,"-->",thunk)
         k s thunk
       Update loc thunk -> do
-        print ("Update",loc,thunk)
+        --print ("Update",loc,thunk)
         case Map.lookup loc (heap s) of
           Nothing -> error "Update/Nothing"
           Just{} -> do
